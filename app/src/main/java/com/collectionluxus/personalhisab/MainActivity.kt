@@ -18,6 +18,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+data class Party(val id: Long, val name: String, val mobile: String, val address: String, val openingBalance: Double, val kind: String)
+
 data class Entry(
     val id: Long, val date: String, val type: String, val title: String,
     val party: String, val item: String, val cost: Double, val amount: Double,
@@ -26,7 +28,7 @@ data class Entry(
 )
 
 class HisabDb(context: android.content.Context) :
-    SQLiteOpenHelper(context, "personal_hisab.db", null, 2) {
+    SQLiteOpenHelper(context, "personal_hisab.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
             CREATE TABLE entries(
@@ -41,6 +43,25 @@ class HisabDb(context: android.content.Context) :
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) db.execSQL("ALTER TABLE entries ADD COLUMN cost REAL NOT NULL DEFAULT 0")
+        if (oldVersion < 3) db.execSQL("""CREATE TABLE IF NOT EXISTS parties(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, mobile TEXT, address TEXT,
+            opening_balance REAL NOT NULL DEFAULT 0, kind TEXT NOT NULL DEFAULT 'Customer')""")
+    }
+    fun addParty(p: Party) {
+        writableDatabase.insertWithOnConflict("parties", null, ContentValues().apply {
+            put("name", p.name); put("mobile", p.mobile); put("address", p.address)
+            put("opening_balance", p.openingBalance); put("kind", p.kind)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun parties(): List<Party> {
+        val out = mutableListOf<Party>()
+        readableDatabase.query("parties", null, null, null, null, null, "name COLLATE NOCASE ASC").use { c ->
+            while (c.moveToNext()) out += Party(c.getLong(c.getColumnIndexOrThrow("id")),
+                c.getString(c.getColumnIndexOrThrow("name")), c.getString(c.getColumnIndexOrThrow("mobile")) ?: "",
+                c.getString(c.getColumnIndexOrThrow("address")) ?: "", c.getDouble(c.getColumnIndexOrThrow("opening_balance")),
+                c.getString(c.getColumnIndexOrThrow("kind")) ?: "Customer")
+        }
+        return out
     }
     fun insert(e: Entry) {
         writableDatabase.insert("entries", null, ContentValues().apply {
@@ -98,15 +119,15 @@ fun PersonalHisabApp(db: HisabDb) {
             topBar = { TopAppBar(title = { Text("Personal Hisab") }) },
             bottomBar = {
                 NavigationBar {
-                    listOf("Home", "Ledger", "Reports").forEachIndexed { i, label ->
+                    listOf("Home", "Parties", "Ledger", "Reports").forEachIndexed { i, label ->
                         NavigationBarItem(selected = tab == i, onClick = { tab = i },
-                            icon = { Text(if (i == 0) "⌂" else if (i == 1) "₹" else "▤") },
+                            icon = { Text(listOf("⌂", "♟", "₹", "▤")[i]) },
                             label = { Text(label) })
                     }
                 }
             },
             floatingActionButton = {
-                if (tab == 0) FloatingActionButton(onClick = { showAdd = true }) { Text("+") }
+                if (tab == 0 || tab == 1) FloatingActionButton(onClick = { if (tab == 0) showAdd = true else showParty = true }) { Text("+") }
             }
         ) { padding ->
             when (tab) {
@@ -123,7 +144,7 @@ fun PersonalHisabApp(db: HisabDb) {
 }
 
 @Composable
-fun HomeScreen(entries: List<Entry>, padding: PaddingValues) {
+fun HomeScreen(entries: List<Entry>, parties: List<Party>, padding: PaddingValues, onAddParty: () -> Unit, onAddEntry: () -> Unit) {
     val sales = entries.filter { it.type == "Sale" }.sumOf { it.amount }
     val profit = entries.filter { it.type == "Sale" }.sumOf { it.amount - it.cost }
     val received = entries.filter { it.type == "Receive" || it.type == "Sale" }.sumOf { it.received }
@@ -141,6 +162,17 @@ fun HomeScreen(entries: List<Entry>, padding: PaddingValues) {
                     Text("Received: " + money(received))
                     Text("Expenses: " + money(expenses))
                     Text("Party Pending: " + money(pending))
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onAddEntry, modifier = Modifier.weight(1f)) { Text("＋ Entry") }
+                OutlinedButton(onClick = onAddParty, modifier = Modifier.weight(1f)) { Text("＋ Party") }
+            }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Quick Overview", style = MaterialTheme.typography.titleMedium)
+                    Text("Parties: " + parties.size + "   •   Transactions: " + entries.size)
+                    Text("Pending to collect: " + money(pending))
                 }
             }
             Text("Accounts", style = MaterialTheme.typography.titleLarge)
