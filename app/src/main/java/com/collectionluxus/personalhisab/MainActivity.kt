@@ -31,6 +31,12 @@ class HisabDb(context: android.content.Context) :
     SQLiteOpenHelper(context, "personal_hisab.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
+            CREATE TABLE parties(
+                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, mobile TEXT, address TEXT,
+                opening_balance REAL NOT NULL DEFAULT 0, kind TEXT NOT NULL DEFAULT 'Customer'
+            )
+        """.trimIndent())
+        db.execSQL("""
             CREATE TABLE entries(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL, type TEXT NOT NULL, title TEXT,
@@ -111,7 +117,9 @@ class MainActivity : ComponentActivity() {
 fun PersonalHisabApp(db: HisabDb) {
     var entries by remember { mutableStateOf(db.all()) }
     var showAdd by remember { mutableStateOf(false) }
+    var showParty by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(0) }
+    var parties by remember { mutableStateOf(db.parties()) }
     val refresh = { entries = db.all() }
 
     MaterialTheme(
@@ -359,6 +367,71 @@ fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
                 if (total <= 0 || (type == "Transfer" && account == toAccount)) return@Button
                 val rec = if (type == "Sale") (received.toDoubleOrNull() ?: 0.0).coerceIn(0.0, total) else total
                 onSave(Entry(0, SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()), type, title.ifBlank { type }, party, item, if (type == "Sale") (cost.toDoubleOrNull() ?: 0.0) else 0.0, total, rec, if (type == "Sale") total - rec else 0.0, account, if (type == "Transfer") account else "", if (type == "Transfer") toAccount else "", notes))
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+
+@Composable
+fun PartiesScreen(parties: List<Party>, entries: List<Entry>, padding: PaddingValues, onAddParty: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val filtered = parties.filter { it.name.contains(query.trim(), ignoreCase = true) || it.mobile.contains(query.trim()) }
+    LazyColumn(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Text("Parties", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(query, { query = it }, label = { Text("Search party") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onAddParty, modifier = Modifier.fillMaxWidth()) { Text("＋ Add Party") }
+        }
+        items(filtered, key = { it.id }) { p ->
+            val sales = entries.filter { it.type == "Sale" && it.party.equals(p.name, true) }
+            val received = sales.sumOf { it.received }
+            val pending = sales.sumOf { it.pending }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(p.name, style = MaterialTheme.typography.titleLarge)
+                    Text(p.kind + if (p.mobile.isNotBlank()) " • " + p.mobile else "")
+                    if (p.address.isNotBlank()) Text(p.address)
+                    Text("Sales: " + money(sales.sumOf { it.amount }) + " • Received: " + money(received))
+                    Text("Pending: " + money(pending + p.openingBalance))
+                }
+            }
+        }
+        if (filtered.isEmpty()) item { Text("No parties yet. Tap Add Party.") }
+    }
+}
+
+@Composable
+fun AddPartyDialog(onDismiss: () -> Unit, onSave: (Party) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var mobile by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var opening by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf("Customer") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Party") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Party Name") }, singleLine = true)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Customer", "Supplier").forEach { k ->
+                        FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(k) })
+                    }
+                }
+                OutlinedTextField(mobile, { mobile = it }, label = { Text("Mobile") }, singleLine = true)
+                OutlinedTextField(address, { address = it }, label = { Text("Address") }, singleLine = true)
+                OutlinedTextField(opening, { opening = it }, label = { Text("Opening Balance") }, singleLine = true)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (name.isNotBlank()) {
+                    onSave(Party(0, name.trim(), mobile.trim(), address.trim(), opening.toDoubleOrNull() ?: 0.0, kind))
+                }
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
