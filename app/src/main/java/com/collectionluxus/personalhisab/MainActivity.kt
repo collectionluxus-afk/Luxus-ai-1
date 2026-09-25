@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun PersonalHisabApp(db: HisabDb) {
     var entries by remember { mutableStateOf(db.all()) }
     var showAdd by remember { mutableStateOf(false) }
