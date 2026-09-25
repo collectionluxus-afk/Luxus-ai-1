@@ -6,12 +6,19 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -124,16 +131,16 @@ fun PersonalHisabApp(db: HisabDb) {
 
     MaterialTheme(
         colorScheme = lightColorScheme(
-            primary = androidx.compose.ui.graphics.Color(0xFF123047),
-            secondary = androidx.compose.ui.graphics.Color(0xFF159A8A),
-            tertiary = androidx.compose.ui.graphics.Color(0xFF2E9B5B),
-            background = androidx.compose.ui.graphics.Color(0xFFF5F7F9),
-            surface = androidx.compose.ui.graphics.Color.White,
-            error = androidx.compose.ui.graphics.Color(0xFFD9534F)
+            primary = Color(0xFF006B4F),
+            secondary = Color(0xFFB58A2A),
+            tertiary = Color(0xFF15845F),
+            background = Color(0xFFF5F8F6),
+            surface = Color.White,
+            error = Color(0xFFD9534F)
         )
     ) {
         Scaffold(
-            topBar = { TopAppBar(title = { Text("Personal Hisab") }) },
+            topBar = { TopAppBar(title = { Row(verticalAlignment = Alignment.CenterVertically) { MoneyLogo(); Spacer(Modifier.width(10.dp)); Column { Text("Muhaasba", style = MaterialTheme.typography.titleLarge); Text("Apne Hisab Ka Aasaan Saathi", style = MaterialTheme.typography.labelSmall) } } }) },
             bottomBar = {
                 NavigationBar {
                     listOf("Home", "Parties", "Ledger", "Reports").forEachIndexed { i, label ->
@@ -148,7 +155,7 @@ fun PersonalHisabApp(db: HisabDb) {
             }
         ) { padding ->
             when (tab) {
-                0 -> HomeScreen(entries, parties, padding, onAddParty = { showParty = true }, onAddEntry = { showAdd = true })
+                0 -> HomeScreen(entries, parties, padding, onAddParty = { showParty = true }, onAddEntry = { showAdd = true }, onReports = { tab = 3 })
                 1 -> PartiesScreen(parties, entries, padding, onAddParty = { showParty = true })
                 2 -> LedgerScreen(entries, padding)
                 else -> ReportsScreen(entries, padding)
@@ -166,7 +173,7 @@ fun PersonalHisabApp(db: HisabDb) {
 }
 
 @Composable
-fun HomeScreen(entries: List<Entry>, parties: List<Party>, padding: PaddingValues, onAddParty: () -> Unit, onAddEntry: () -> Unit) {
+fun HomeScreen(entries: List<Entry>, parties: List<Party>, padding: PaddingValues, onAddParty: () -> Unit, onAddEntry: () -> Unit, onReports: () -> Unit) {
     val sales = entries.filter { it.type == "Sale" }.sumOf { it.amount }
     val profit = entries.filter { it.type == "Sale" }.sumOf { it.amount - it.cost }
     val received = entries.filter { it.type == "Receive" || it.type == "Sale" }.sumOf { it.received }
@@ -263,23 +270,81 @@ fun LedgerScreen(entries: List<Entry>, padding: PaddingValues) {
 
 @Composable
 fun ReportsScreen(entries: List<Entry>, padding: PaddingValues) {
-    val sales = entries.filter { it.type == "Sale" }
+    val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val monthStart = remember {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+    }
+    var custom by remember { mutableStateOf(false) }
+    var from by remember { mutableStateOf(monthStart) }
+    var to by remember { mutableStateOf(today) }
+    val filtered = entries.filter { it.date >= from && it.date <= to }
+    val sales = filtered.filter { it.type == "Sale" }
+    val businessExpense = filtered.filter { it.type == "Expense" }.sumOf { it.amount }
+    val personal = filtered.filter { it.type == "Personal" }.sumOf { it.amount }
+    val household = filtered.filter { it.type == "Household" }.sumOf { it.amount }
+    val totalExpense = businessExpense + personal + household
+    val received = filtered.filter { it.type == "Receive" || it.type == "Sale" }.sumOf { it.received }
+    val profit = sales.sumOf { it.amount - it.cost }
     val byItem = sales.groupBy { it.item.ifBlank { "Other" } }
     val byParty = sales.groupBy { it.party.ifBlank { "Other" } }
-    val businessExpense = entries.filter { it.type == "Expense" }.sumOf { it.amount }
-    val personal = entries.filter { it.type == "Personal" }.sumOf { it.amount }
-    val household = entries.filter { it.type == "Household" }.sumOf { it.amount }
-    LazyColumn(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Reports", style = MaterialTheme.typography.headlineSmall) }
-        item { SummaryCard("Sales", sales.sumOf { it.amount }, "Cost", sales.sumOf { it.cost }, "Profit", sales.sumOf { it.amount - it.cost }) }
-        item { SummaryCard("Business Expense", businessExpense, "Personal", personal, "Household", household) }
+
+    LazyColumn(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        item {
+            Text("Monthly Review", style = MaterialTheme.typography.headlineSmall)
+            Text("Sale, expense, profit aur received kisi bhi date range me dekho.")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = !custom, onClick = {
+                    custom = false
+                    from = monthStart
+                    to = today
+                }, label = { Text("Monthly") })
+                FilterChip(selected = custom, onClick = { custom = true }, label = { Text("Custom Date") })
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("Date Range", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(from, { from = it }, label = { Text("From (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(to, { to = it }, label = { Text("To (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Text(if (custom) "Custom range selected" else "Current month selected")
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Review: $from → $to", style = MaterialTheme.typography.titleMedium)
+                    Text("Total Sale: " + money(sales.sumOf { it.amount }))
+                    Text("Total Purchase/Cost: " + money(sales.sumOf { it.cost }))
+                    Text("Total Profit: " + money(profit))
+                    Text("Money Received: " + money(received))
+                    Text("Business Expense: " + money(businessExpense))
+                    Text("Personal Expense: " + money(personal))
+                    Text("Household Expense: " + money(household))
+                    Text("Total Expense: " + money(totalExpense))
+                    Text("Party Pending: " + money(sales.sumOf { it.pending }))
+                }
+            }
+        }
         item { Text("Item-wise Profit", style = MaterialTheme.typography.titleLarge) }
         items(byItem.entries.toList(), key = { it.key }) { (item, rows) ->
-            ListItem(headlineContent = { Text(item) }, supportingContent = { Text("Sales " + money(rows.sumOf { it.amount }) + " • Cost " + money(rows.sumOf { it.cost })) }, trailingContent = { Text("Profit " + money(rows.sumOf { it.amount - it.cost })) })
+            ListItem(
+                headlineContent = { Text(item) },
+                supportingContent = { Text("Sale " + money(rows.sumOf { it.amount }) + " • Cost " + money(rows.sumOf { it.cost })) },
+                trailingContent = { Text("Profit " + money(rows.sumOf { it.amount - it.cost })) }
+            )
         }
         item { Text("Party-wise Profit", style = MaterialTheme.typography.titleLarge) }
         items(byParty.entries.toList(), key = { it.key }) { (party, rows) ->
-            ListItem(headlineContent = { Text(party) }, supportingContent = { Text("Received " + money(rows.sumOf { it.received }) + " • Pending " + money(rows.sumOf { it.pending })) }, trailingContent = { Text(money(rows.sumOf { it.amount - it.cost })) })
+            ListItem(
+                headlineContent = { Text(party) },
+                supportingContent = { Text("Received " + money(rows.sumOf { it.received }) + " • Pending " + money(rows.sumOf { it.pending })) },
+                trailingContent = { Text(money(rows.sumOf { it.amount - it.cost })) }
+            )
         }
     }
 }
@@ -310,6 +375,25 @@ fun accountBalance(entries: List<Entry>, wanted: String?): Double =
             else -> 0.0
         }
     }
+
+@Composable
+fun MoneyLogo() {
+    Box(
+        Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFEAF5EF)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.fillMaxSize().padding(7.dp)) {
+            val w = size.width
+            val h = size.height
+            drawRoundRect(Color(0xFF006B4F), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .15f, h * .15f))
+            drawRoundRect(Color(0xFFB58A2A), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .15f, h * .15f), style = Stroke(width = w * .06f))
+            drawCircle(Color(0xFFFFD86A), radius = w * .16f, center = androidx.compose.ui.geometry.Offset(w * .30f, h * .72f))
+            drawCircle(Color(0xFFFFE69A), radius = w * .12f, center = androidx.compose.ui.geometry.Offset(w * .52f, h * .82f))
+            drawCircle(Color(0xFFFFD86A), radius = w * .10f, center = androidx.compose.ui.geometry.Offset(w * .70f, h * .66f))
+        }
+        Text("₹", color = Color.White)
+    }
+}
 
 @Composable
 fun AccountCard(name: String, entries: List<Entry>, account: String) {
