@@ -114,7 +114,16 @@ fun PersonalHisabApp(db: HisabDb) {
     var tab by remember { mutableStateOf(0) }
     val refresh = { entries = db.all() }
 
-    MaterialTheme {
+    MaterialTheme(
+        colorScheme = lightColorScheme(
+            primary = androidx.compose.ui.graphics.Color(0xFF123047),
+            secondary = androidx.compose.ui.graphics.Color(0xFF159A8A),
+            tertiary = androidx.compose.ui.graphics.Color(0xFF2E9B5B),
+            background = androidx.compose.ui.graphics.Color(0xFFF5F7F9),
+            surface = androidx.compose.ui.graphics.Color.White,
+            error = androidx.compose.ui.graphics.Color(0xFFD9534F)
+        )
+    ) {
         Scaffold(
             topBar = { TopAppBar(title = { Text("Personal Hisab") }) },
             bottomBar = {
