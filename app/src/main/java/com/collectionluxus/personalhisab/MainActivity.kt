@@ -140,14 +140,19 @@ fun PersonalHisabApp(db: HisabDb) {
             }
         ) { padding ->
             when (tab) {
-                0 -> HomeScreen(entries, padding)
-                1 -> LedgerScreen(entries, padding)
+                0 -> HomeScreen(entries, parties, padding, onAddParty = { showParty = true }, onAddEntry = { showAdd = true })
+                1 -> PartiesScreen(parties, entries, padding, onAddParty = { showParty = true })
+                2 -> LedgerScreen(entries, padding)
                 else -> ReportsScreen(entries, padding)
             }
         }
         if (showAdd) AddEntryDialog(
             onDismiss = { showAdd = false },
             onSave = { db.insert(it); entries = db.all(); showAdd = false }
+        )
+        if (showParty) AddPartyDialog(
+            onDismiss = { showParty = false },
+            onSave = { db.addParty(it); parties = db.parties(); showParty = false }
         )
     }
 }
