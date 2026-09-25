@@ -404,6 +404,7 @@ fun PartiesScreen(parties: List<Party>, entries: List<Entry>, padding: PaddingVa
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddPartyDialog(onDismiss: () -> Unit, onSave: (Party) -> Unit) {
     var name by remember { mutableStateOf("") }
