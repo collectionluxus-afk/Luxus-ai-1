@@ -32,11 +32,13 @@ data class Entry(
     val id: Long, val date: String, val type: String, val title: String,
     val party: String, val item: String, val cost: Double, val amount: Double,
     val received: Double, val pending: Double, val account: String,
-    val fromAccount: String, val toAccount: String, val notes: String
+    val fromAccount: String, val toAccount: String, val notes: String,
+    val quantity: Double = 0.0, val sellRate: Double = 0.0, val extraExpense: Double = 0.0,
+    val expenseCategory: String = "Business"
 )
 
 class HisabDb(context: android.content.Context) :
-    SQLiteOpenHelper(context, "personal_hisab.db", null, 3) {
+    SQLiteOpenHelper(context, "personal_hisab.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
             CREATE TABLE parties(
@@ -60,6 +62,12 @@ class HisabDb(context: android.content.Context) :
         if (oldVersion < 3) db.execSQL("""CREATE TABLE IF NOT EXISTS parties(
             id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, mobile TEXT, address TEXT,
             opening_balance REAL NOT NULL DEFAULT 0, kind TEXT NOT NULL DEFAULT 'Customer')""")
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE entries ADD COLUMN quantity REAL NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE entries ADD COLUMN sell_rate REAL NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE entries ADD COLUMN extra_expense REAL NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE entries ADD COLUMN expense_category TEXT NOT NULL DEFAULT 'Business'")
+        }
     }
     fun addParty(p: Party) {
         writableDatabase.insertWithOnConflict("parties", null, ContentValues().apply {
@@ -84,6 +92,8 @@ class HisabDb(context: android.content.Context) :
             put("amount", e.amount); put("received", e.received); put("pending", e.pending)
             put("account", e.account); put("from_account", e.fromAccount)
             put("to_account", e.toAccount); put("notes", e.notes)
+            put("quantity", e.quantity); put("sell_rate", e.sellRate); put("extra_expense", e.extraExpense)
+            put("expense_category", e.expenseCategory)
         })
     }
     fun all(): List<Entry> {
@@ -103,7 +113,11 @@ class HisabDb(context: android.content.Context) :
                 c.getString(c.getColumnIndexOrThrow("account")) ?: "",
                 c.getString(c.getColumnIndexOrThrow("from_account")) ?: "",
                 c.getString(c.getColumnIndexOrThrow("to_account")) ?: "",
-                c.getString(c.getColumnIndexOrThrow("notes")) ?: ""
+                c.getString(c.getColumnIndexOrThrow("notes")) ?: "",
+                c.getDouble(c.getColumnIndexOrThrow("quantity")),
+                c.getDouble(c.getColumnIndexOrThrow("sell_rate")),
+                c.getDouble(c.getColumnIndexOrThrow("extra_expense")),
+                c.getString(c.getColumnIndexOrThrow("expense_category")) ?: "Business"
             )
         }
         return result
@@ -176,7 +190,7 @@ fun PersonalHisabApp(db: HisabDb) {
 @Composable
 fun HomeScreen(entries: List<Entry>, parties: List<Party>, padding: PaddingValues, onAddParty: () -> Unit, onAddEntry: () -> Unit, onReports: () -> Unit) {
     val sales = entries.filter { it.type == "Sale" }.sumOf { it.amount }
-    val profit = entries.filter { it.type == "Sale" }.sumOf { it.amount - it.cost }
+    val profit = entries.filter { it.type == "Sale" }.sumOf { it.amount - it.cost - it.extraExpense }
     val received = entries.filter { it.type == "Receive" || it.type == "Sale" }.sumOf { it.received }
     val expenses = entries.filter { it.type in listOf("Expense", "Personal", "Household") }.sumOf { it.amount }
     val pending = entries.filter { it.type == "Sale" }.sumOf { it.pending }
@@ -252,7 +266,7 @@ fun LedgerScreen(entries: List<Entry>, padding: PaddingValues) {
                         Text(selectedParty!!, style = MaterialTheme.typography.titleLarge)
                         Text("Sales: " + money(p.sumOf { it.amount }))
                         Text("Cost: " + money(p.sumOf { it.cost }))
-                        Text("Profit: " + money(p.sumOf { it.amount - it.cost }))
+                        Text("Profit: " + money(p.sumOf { it.amount - it.cost - it.extraExpense }))
                         Text("Received: " + money(p.sumOf { it.received }))
                         Text("Pending: " + money(p.sumOf { it.pending }))
                     }
@@ -282,12 +296,12 @@ fun ReportsScreen(entries: List<Entry>, padding: PaddingValues) {
     var to by remember { mutableStateOf(today) }
     val filtered = entries.filter { it.date >= from && it.date <= to }
     val sales = filtered.filter { it.type == "Sale" }
-    val businessExpense = filtered.filter { it.type == "Expense" }.sumOf { it.amount }
-    val personal = filtered.filter { it.type == "Personal" }.sumOf { it.amount }
-    val household = filtered.filter { it.type == "Household" }.sumOf { it.amount }
+    val businessExpense = filtered.filter { it.type == "Expense" && it.expenseCategory == "Business" }.sumOf { it.amount }
+    val personal = filtered.filter { it.type == "Expense" && it.expenseCategory == "Personal" }.sumOf { it.amount }
+    val household = filtered.filter { it.type == "Expense" && it.expenseCategory == "Household" }.sumOf { it.amount }
     val totalExpense = businessExpense + personal + household
     val received = filtered.filter { it.type == "Receive" || it.type == "Sale" }.sumOf { it.received }
-    val profit = sales.sumOf { it.amount - it.cost }
+    val profit = sales.sumOf { it.amount - it.cost - it.extraExpense }
     val byItem = sales.groupBy { it.item.ifBlank { "Other" } }
     val byParty = sales.groupBy { it.party.ifBlank { "Other" } }
 
@@ -321,6 +335,7 @@ fun ReportsScreen(entries: List<Entry>, padding: PaddingValues) {
                     Text("Review: $from → $to", style = MaterialTheme.typography.titleMedium)
                     Text("Total Sale: " + money(sales.sumOf { it.amount }))
                     Text("Total Purchase/Cost: " + money(sales.sumOf { it.cost }))
+                    Text("Sale Extra Expenses: " + money(sales.sumOf { it.extraExpense }))
                     Text("Total Profit: " + money(profit))
                     Text("Money Received: " + money(received))
                     Text("Business Expense: " + money(businessExpense))
@@ -406,7 +421,8 @@ fun AccountCard(name: String, entries: List<Entry>, account: String) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
-    val types = listOf("Receive", "Sale", "Expense", "Personal", "Household", "Transfer")
+    val types = listOf("Receive", "Sale", "Expense", "Transfer")
+    val expenseCategories = listOf("Business", "Personal", "Household")
     val accounts = listOf("Cash", "Union Bank", "Kotak Bank")
     var title by remember { mutableStateOf("") }
     var party by remember { mutableStateOf("") }
@@ -418,6 +434,10 @@ fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
     var account by remember { mutableStateOf("Cash") }
     var toAccount by remember { mutableStateOf("Union Bank") }
     var notes by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("") }
+    var sellRate by remember { mutableStateOf("") }
+    var extraExpense by remember { mutableStateOf("") }
+    var expenseCategory by remember { mutableStateOf("Business") }
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("Quick Add") },
         text = {
@@ -429,9 +449,18 @@ fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
                 if (type == "Sale") {
                     OutlinedTextField(party, { party = it }, label = { Text("Party / Customer") }, singleLine = true)
                     OutlinedTextField(item, { item = it }, label = { Text("Item") }, singleLine = true)
-                    OutlinedTextField(cost, { cost = it }, label = { Text("Purchase / Cost") }, singleLine = true)
+                    OutlinedTextField(quantity, { quantity = it }, label = { Text("Quantity") }, singleLine = true)
+                    OutlinedTextField(cost, { cost = it }, label = { Text("Purchase / Cost (Total)") }, singleLine = true)
+                    OutlinedTextField(sellRate, { sellRate = it }, label = { Text("Exact Sell Rate / Piece") }, singleLine = true)
                     OutlinedTextField(amount, { amount = it }, label = { Text("Total Sale Amount") }, singleLine = true)
+                    OutlinedTextField(extraExpense, { extraExpense = it }, label = { Text("Sale Extra Expense (Print / Packing / Other)") }, singleLine = true)
                     OutlinedTextField(received, { received = it }, label = { Text("Amount Received") }, singleLine = true)
+                } else if (type == "Expense") {
+                    Text("Expense Kis Type Ka Hai?")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        expenseCategories.forEach { c -> FilterChip(selected = expenseCategory == c, onClick = { expenseCategory = c }, label = { Text(c) }) }
+                    }
+                    OutlinedTextField(amount, { amount = it }, label = { Text("Expense Amount") }, singleLine = true)
                 } else OutlinedTextField(amount, { amount = it }, label = { Text("Amount") }, singleLine = true)
                 if (type != "Transfer") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -448,10 +477,14 @@ fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
         },
         confirmButton = {
             Button(onClick = {
-                val total = amount.toDoubleOrNull() ?: return@Button
+                val qty = quantity.toDoubleOrNull() ?: 0.0
+                val rate = sellRate.toDoubleOrNull() ?: 0.0
+                val typedAmount = amount.toDoubleOrNull() ?: 0.0
+                val total = if (type == "Sale" && qty > 0 && rate > 0) qty * rate else typedAmount
+                val extra = if (type == "Sale") (extraExpense.toDoubleOrNull() ?: 0.0) else 0.0
                 if (total <= 0 || (type == "Transfer" && account == toAccount)) return@Button
                 val rec = if (type == "Sale") (received.toDoubleOrNull() ?: 0.0).coerceIn(0.0, total) else total
-                onSave(Entry(0, SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()), type, title.ifBlank { type }, party, item, if (type == "Sale") (cost.toDoubleOrNull() ?: 0.0) else 0.0, total, rec, if (type == "Sale") total - rec else 0.0, account, if (type == "Transfer") account else "", if (type == "Transfer") toAccount else "", notes))
+                onSave(Entry(0, SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()), type, title.ifBlank { type }, party, item, if (type == "Sale") (cost.toDoubleOrNull() ?: 0.0) else 0.0, total, rec, if (type == "Sale") total - rec else 0.0, account, if (type == "Transfer") account else "", if (type == "Transfer") toAccount else "", notes, qty, rate, extra, if (type == "Expense") expenseCategory else "Business"))
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
