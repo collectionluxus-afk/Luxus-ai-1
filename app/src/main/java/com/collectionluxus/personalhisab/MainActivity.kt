@@ -53,7 +53,9 @@ class HisabDb(context: android.content.Context) :
                 party TEXT, item TEXT, cost REAL NOT NULL DEFAULT 0,
                 amount REAL NOT NULL DEFAULT 0, received REAL NOT NULL DEFAULT 0,
                 pending REAL NOT NULL DEFAULT 0, account TEXT,
-                from_account TEXT, to_account TEXT, notes TEXT
+                from_account TEXT, to_account TEXT, notes TEXT,
+                quantity REAL NOT NULL DEFAULT 0, sell_rate REAL NOT NULL DEFAULT 0,
+                extra_expense REAL NOT NULL DEFAULT 0, expense_category TEXT NOT NULL DEFAULT 'Business'
             )
         """.trimIndent())
     }
@@ -351,7 +353,7 @@ fun ReportsScreen(entries: List<Entry>, padding: PaddingValues) {
             ListItem(
                 headlineContent = { Text(item) },
                 supportingContent = { Text("Sale " + money(rows.sumOf { it.amount }) + " • Cost " + money(rows.sumOf { it.cost })) },
-                trailingContent = { Text("Profit " + money(rows.sumOf { it.amount - it.cost })) }
+                trailingContent = { Text("Profit " + money(rows.sumOf { it.amount - it.cost - it.extraExpense })) }
             )
         }
         item { Text("Party-wise Profit", style = MaterialTheme.typography.titleLarge) }
