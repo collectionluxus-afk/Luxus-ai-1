@@ -457,7 +457,9 @@ fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
                     OutlinedTextField(cost, { cost = it }, label = { Text("Purchase / Cost (Total)") }, singleLine = true)
                     OutlinedTextField(sellRate, { sellRate = it }, label = { Text("Exact Sell Rate / Piece") }, singleLine = true)
                     OutlinedTextField(amount, { amount = it }, label = { Text("Total Sale Amount") }, singleLine = true)
-                    Text("Extra Sale Expense", style = MaterialTheme.typography.titleSmall)\n                    Text("Ye sirf is sale ke profit se minus hoga; account balance par effect nahi karega.", style = MaterialTheme.typography.bodySmall)\n                    OutlinedTextField(extraExpense, { extraExpense = it }, label = { Text("Print / Packing / Transport / Other") }, singleLine = true)
+                    Text("Extra Sale Expense", style = MaterialTheme.typography.titleSmall)
+                    Text("Ye sirf is sale ke profit se minus hoga; account balance par effect nahi karega.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(extraExpense, { extraExpense = it }, label = { Text("Print / Packing / Transport / Other") }, singleLine = true)
                     OutlinedTextField(received, { received = it }, label = { Text("Amount Received") }, singleLine = true)
                 } else if (type == "Expense") {
                     Text("Expense Kis Type Ka Hai?")
