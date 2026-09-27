@@ -14,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -425,7 +427,7 @@ fun AccountCard(name: String, entries: List<Entry>, account: String) {
 fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
     val types = listOf("Receive", "Sale", "Expense", "Transfer")
     val expenseCategories = listOf("Business", "Personal", "Household")
-    val accounts = listOf("Cash", "Union Bank", "Kotak Bank")
+    val accounts = listOf("Cash", "UPI", "Union Bank", "Kotak Bank")
     var title by remember { mutableStateOf("") }
     var party by remember { mutableStateOf("") }
     var item by remember { mutableStateOf("") }
@@ -443,7 +445,7 @@ fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("Quick Add") },
         text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     types.forEach { t -> FilterChip(selected = type == t, onClick = { type = t }, label = { Text(t) }) }
                 }
@@ -455,7 +457,7 @@ fun AddEntryDialog(onDismiss: () -> Unit, onSave: (Entry) -> Unit) {
                     OutlinedTextField(cost, { cost = it }, label = { Text("Purchase / Cost (Total)") }, singleLine = true)
                     OutlinedTextField(sellRate, { sellRate = it }, label = { Text("Exact Sell Rate / Piece") }, singleLine = true)
                     OutlinedTextField(amount, { amount = it }, label = { Text("Total Sale Amount") }, singleLine = true)
-                    OutlinedTextField(extraExpense, { extraExpense = it }, label = { Text("Sale Extra Expense (Print / Packing / Other)") }, singleLine = true)
+                    Text("Extra Sale Expense", style = MaterialTheme.typography.titleSmall)\n                    Text("Ye sirf is sale ke profit se minus hoga; account balance par effect nahi karega.", style = MaterialTheme.typography.bodySmall)\n                    OutlinedTextField(extraExpense, { extraExpense = it }, label = { Text("Print / Packing / Transport / Other") }, singleLine = true)
                     OutlinedTextField(received, { received = it }, label = { Text("Amount Received") }, singleLine = true)
                 } else if (type == "Expense") {
                     Text("Expense Kis Type Ka Hai?")
